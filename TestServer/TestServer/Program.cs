@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -9,89 +7,119 @@ namespace TestServer
 {
     class Program
     {
-        static void Main(string[] args)
+        private readonly int port;
+
+        public Program(int port)
         {
+            this.port = port;
+        }
+
+        public void HandleServer()
+        {
+            Socket server = null;
+
             try
             {
-                if (args.Length == 2 && args[0].ToLower().Equals("tcp"))
+                server = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
+                IPEndPoint serverEndPoint = new IPEndPoint(IPAddress.IPv6Any, port);
+
+                server.Bind(serverEndPoint);
+                server.Listen(int.MaxValue);
+
+                Console.WriteLine("Waiting for the TCPv6 connections");
+
+                while (true)
                 {
-                    IPEndPoint serverEndPoint = new IPEndPoint(IPAddress.IPv6Any, Int32.Parse(args[1]));
-                    Socket server = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
-
-                    server.Bind(serverEndPoint);
-                    server.Listen(10);
-
-                    Console.WriteLine("Waiting for the TCPv6 Client ...");
-                    Console.WriteLine();
-
                     Socket client = server.Accept();
-                    IPEndPoint clientEndPoint = (IPEndPoint)client.RemoteEndPoint;
 
-                    Console.WriteLine("Connected with {0} at port {1}:", clientEndPoint.Address, clientEndPoint.Port);
-                    Console.WriteLine();
-
-                    {
-                        byte[] data = Encoding.ASCII.GetBytes("Welcome to the TCPv6 Test Server !");
-                        client.Send(data, data.Length, SocketFlags.None);
-                    }
-
-                    while (true)
-                    {
-                        byte[] data = new byte[1024];
-                        int bytes = client.Receive(data);
-
-                        if (bytes == 0)
-                        {
-                            break;
-                        }
-
-                        Console.WriteLine(Encoding.ASCII.GetString(data, 0, bytes));
-                    }
-
-                    client.Close();
-                    server.Close();
-
-                    Console.WriteLine();
-                    Console.WriteLine("Disconnected with {0}", clientEndPoint.Address);
-                }
-                else if (args.Length == 3 && args[0].ToLower().Equals("udp"))
-                {
-                    UdpClient udpClient = new UdpClient(Int32.Parse(args[2]), AddressFamily.InterNetworkV6);
-                    
-                    udpClient.JoinMulticastGroup(IPAddress.Parse(args[1]));
-
-                    Console.WriteLine("Waiting for the UDPv6 Messages ... ");
-                    Console.WriteLine();
-
-                    while (true)
-                    {
-                        IPEndPoint remoteEndPoint = new IPEndPoint(IPAddress.IPv6Any, 0);
-                        byte[] data = udpClient.Receive(ref remoteEndPoint);
-                        string message = Encoding.ASCII.GetString(data);
-
-                        if (String.IsNullOrEmpty(message))
-                        {
-                            break;
-                        }
-
-                        Console.WriteLine("Message from {0} at port {1}: {2}", remoteEndPoint.Address, remoteEndPoint.Port, message);
-                    }
-
-                    udpClient.Close();
-
-                    Console.WriteLine();
-                    Console.WriteLine("Stopped waiting for the UDPv6 Messages");
-                }
-                else
-                {
-                    throw new Exception("Input arguments are not recognizable !");
+                    HandleClient(client);
                 }
             }
             catch (Exception exception)
             {
                 Console.WriteLine(exception.Message);
             }
-            Console.ReadKey();
+            finally
+            {
+                if (server != null)
+                {
+                    server.Close();
+                }
+            }
+        }
+
+        public void HandleClient(Object obj)
+        {
+            Socket socket = null;
+            Socket client = (Socket)obj;
+
+            try
+            {
+                IPEndPoint clientEndPoint = (IPEndPoint)client.RemoteEndPoint;
+
+                Console.WriteLine("Connection accepted: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port);
+
+                {
+                    byte[] data = Encoding.ASCII.GetBytes("Welcome to the IPv6 Server!");
+                    client.Send(data, data.Length, SocketFlags.None);
+                }
+
+                socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
+                IPEndPoint socketEndPoint = new IPEndPoint(clientEndPoint.Address, port + 1);
+
+                while (true)
+                {
+                    byte[] data = new byte[1024];
+                    int length = client.Receive(data);
+
+                    if (length == 0)
+                    {
+                        throw new Exception(String.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                    }
+
+                    client.Send(data, length, SocketFlags.None);
+
+                    for (int i = 0; i < 2; ++i)
+                    {
+                        socket.SendTo(data, length, SocketFlags.None, socketEndPoint);
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(exception.Message);
+            }
+            finally
+            {
+                if (socket != null)
+                {
+                    socket.Close();
+                }
+
+                client.Close();
+            }
+        }
+
+        static void Main(string[] args)
+        {
+            try
+            {
+                if (args.Length == 1)
+                {
+                    int port = Int32.Parse(args[0]);
+                    Program program = new Program(port);
+
+                    program.HandleServer();
+                }
+                else
+                {
+                    throw new Exception("Usage: TestServer.exe port");
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(exception.Message);
+            }
         }
     }
 }

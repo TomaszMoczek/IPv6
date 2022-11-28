@@ -1,8 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 
@@ -10,88 +7,142 @@ namespace TestClient
 {
     class Program
     {
-        static void Main(string[] args)
+        private readonly String host;
+        private readonly int port;
+
+        public Program(String host, int port)
         {
+            this.host = host;
+            this.port = port;
+        }
+
+        public void HandleTcpClient()
+        {
+            Socket socket = null;
+
             try
             {
-                if (args.Length == 3 && args[0].ToLower().Equals("tcp"))
+                socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
+                IPEndPoint socketEndPoint = new IPEndPoint(IPAddress.Parse(host), port);
+
+                socket.Connect(socketEndPoint);
+
                 {
-                    IPEndPoint server = new IPEndPoint(IPAddress.Parse(args[1]), Int32.Parse(args[2]));
-                    Socket socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
+                    byte[] data = new byte[1024];
+                    int length = socket.Receive(data);
 
-                    socket.Connect(server);
-
-                    if (socket.Connected)
-                    {
-                        Console.WriteLine("Connected with {0} at port {1}", server.Address, server.Port);
-                        Console.WriteLine();
-
-                        {
-                            byte[] data = new byte[1024];
-                            int bytes = socket.Receive(data, data.Length, SocketFlags.None);
-
-                            Console.WriteLine(Encoding.ASCII.GetString(data, 0, bytes));
-                            Console.WriteLine();
-                        }
-
-                        while (true)
-                        {
-                            string text = Console.ReadLine();
-
-                            if (String.IsNullOrEmpty(text))
-                            {
-                                break;
-                            }
-
-                            byte[] data = Encoding.ASCII.GetBytes(text);
-
-                            socket.Send(data, data.Length, SocketFlags.None);
-                        }
-
-                        socket.Close();
-
-                        Console.WriteLine("Disconnected with {0}", server.Address);
-                    }
+                    Console.WriteLine("[{0}]:{1}: {2}", socketEndPoint.Address, socketEndPoint.Port
+                        , Encoding.ASCII.GetString(data, 0, length));
                 }
-                else if (args.Length == 3 && args[0].ToLower().Equals("udp"))
+
+                while (true)
                 {
-                    IPEndPoint server = new IPEndPoint(IPAddress.Parse(args[1]), Int32.Parse(args[2]));
-                    Socket socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
+                    string text = Console.ReadLine();
 
-                    socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.AddMembership, new IPv6MulticastOption(server.Address));
-
-                    Console.WriteLine("Sending UDPv6 Messages to {0} at port {1}", server.Address, server.Port);
-                    Console.WriteLine();
-
-                    while (true)
+                    if (String.IsNullOrEmpty(text))
                     {
-                        string text = Console.ReadLine();
-                        byte[] data = Encoding.ASCII.GetBytes(text);
-
-                        socket.SendTo(data, server);
-
-                        if (String.IsNullOrEmpty(text))
-                        {
-                            break;
-                        }
+                        throw new Exception("Connection closed");
                     }
 
-                    socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.DropMembership, new IPv6MulticastOption(server.Address));
-                    socket.Close();
+                    byte[] data = Encoding.ASCII.GetBytes(text);
+                    if (socket.Send(data, data.Length, SocketFlags.None) == 0)
+                    {
+                        throw new Exception("Connection closed");
+                    }
 
-                    Console.WriteLine();
-                    Console.WriteLine("Stopped sending the UDPv6 Messages");
-                }
-                else
-                {
-                    throw new Exception("Input arguments are not recognizable !");
+                    data = new byte[1024];
+                    int length = socket.Receive(data);
+
+                    if (length == 0)
+                    {
+                        throw new Exception("Connection closed");
+                    }
+
+                    Console.WriteLine("[{0}]:{1}: {2}", socketEndPoint.Address, socketEndPoint.Port
+                        , Encoding.ASCII.GetString(data, 0, length));
                 }
             }
             catch (Exception exception)
             {
                 Console.WriteLine(exception.Message);
             }
-            Console.ReadKey();
+            finally
+            {
+                if (socket != null)
+                {
+                    socket.Close();
+                }
+            }
+        }
+
+        public void HandleUdpClient()
+        {
+            Socket socket = null;
+
+            try
+            {
+                socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
+                IPEndPoint socketEndPoint = new IPEndPoint(IPAddress.IPv6Any, port);
+
+                socket.Bind(socketEndPoint);
+
+                EndPoint remoteEndPoint = (EndPoint)new IPEndPoint(IPAddress.IPv6Any, 0);
+
+                while (true)
+                {
+                    byte[] data = new byte[1024];
+                    int length = socket.ReceiveFrom(data, ref remoteEndPoint);
+
+                    Console.WriteLine("[{0}]:{1}: {2}", ((IPEndPoint)remoteEndPoint).Address, ((IPEndPoint)remoteEndPoint).Port
+                        , Encoding.ASCII.GetString(data, 0, length));
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(exception.Message);
+            }
+            finally
+            {
+                if (socket != null)
+                {
+                    socket.Close();
+                }
+            }
+        }
+
+        static void Main(string[] args)
+        {
+            try
+            {
+                if (args.Length == 3)
+                {
+                    String protocol = args[0];
+                    String host = args[1];
+                    int port = Int32.Parse(args[2]);
+                    Program program = new Program(host, port);
+
+                    if (protocol.ToLower().Equals("tcp"))
+                    {
+                        program.HandleTcpClient();
+                    }
+                    else if (protocol.ToLower().Equals("udp"))
+                    {
+                        program.HandleUdpClient();
+                    }
+                    else
+                    {
+                        throw new Exception("Usage: TestClient.exe protocol host port");
+                    }
+                }
+                else
+                {
+                    throw new Exception("Usage: TestClient.exe protocol host port");
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(exception.Message);
+            }
         }
     }
 }
