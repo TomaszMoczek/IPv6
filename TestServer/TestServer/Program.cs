@@ -2,6 +2,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 
 namespace TestServer
 {
@@ -31,8 +32,9 @@ namespace TestServer
                 while (true)
                 {
                     Socket client = server.Accept();
+                    Thread thread = new Thread(new ParameterizedThreadStart(HandleClient));
 
-                    HandleClient(client);
+                    thread.Start(client);
                 }
             }
             catch (Exception exception)
@@ -61,7 +63,10 @@ namespace TestServer
 
                 {
                     byte[] data = Encoding.ASCII.GetBytes("Welcome to the IPv6 Server!");
-                    client.Send(data, data.Length, SocketFlags.None);
+                    if (client.Send(data, data.Length, SocketFlags.None) == 0)
+                    {
+                        throw new Exception(String.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                    }
                 }
 
                 socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
@@ -77,11 +82,17 @@ namespace TestServer
                         throw new Exception(String.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
 
-                    client.Send(data, length, SocketFlags.None);
+                    if (client.Send(data, length, SocketFlags.None) == 0)
+                    {
+                        throw new Exception(String.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                    }
 
                     for (int i = 0; i < 2; ++i)
                     {
-                        socket.SendTo(data, length, SocketFlags.None, socketEndPoint);
+                        if (socket.SendTo(data, length, SocketFlags.None, socketEndPoint) == 0)
+                        {
+                            Console.WriteLine("Failed to send datagram: [{0}]:{1}", socketEndPoint.Address, socketEndPoint.Port);
+                        }
                     }
                 }
             }
@@ -104,6 +115,9 @@ namespace TestServer
         {
             try
             {
+                Console.WriteLine("{0} v{1}", System.Reflection.Assembly.GetEntryAssembly().GetName().Name
+                    , System.Reflection.Assembly.GetEntryAssembly().GetName().Version);
+
                 if (args.Length == 1)
                 {
                     int port = Int32.Parse(args[0]);

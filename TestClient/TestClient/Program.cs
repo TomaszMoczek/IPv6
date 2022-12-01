@@ -2,6 +2,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 
 namespace TestClient
 {
@@ -31,13 +32,18 @@ namespace TestClient
                     byte[] data = new byte[1024];
                     int length = socket.Receive(data);
 
+                    if (length == 0)
+                    {
+                        throw new Exception("Connection closed");
+                    }
+
                     Console.WriteLine("[{0}]:{1}: {2}", socketEndPoint.Address, socketEndPoint.Port
                         , Encoding.ASCII.GetString(data, 0, length));
                 }
 
                 while (true)
                 {
-                    string text = Console.ReadLine();
+                    String text = Console.ReadLine();
 
                     if (String.IsNullOrEmpty(text))
                     {
@@ -82,7 +88,7 @@ namespace TestClient
             try
             {
                 socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
-                IPEndPoint socketEndPoint = new IPEndPoint(IPAddress.IPv6Any, port);
+                IPEndPoint socketEndPoint = new IPEndPoint(IPAddress.IPv6Any, port + 1);
 
                 socket.Bind(socketEndPoint);
 
@@ -94,7 +100,7 @@ namespace TestClient
                     int length = socket.ReceiveFrom(data, ref remoteEndPoint);
 
                     Console.WriteLine("[{0}]:{1}: {2}", ((IPEndPoint)remoteEndPoint).Address, ((IPEndPoint)remoteEndPoint).Port
-                        , Encoding.ASCII.GetString(data, 0, length));
+                        , length == 0 ? "Failed to receive datagram" : Encoding.ASCII.GetString(data, 0, length));
                 }
             }
             catch (Exception exception)
@@ -114,29 +120,23 @@ namespace TestClient
         {
             try
             {
-                if (args.Length == 3)
-                {
-                    String protocol = args[0];
-                    String host = args[1];
-                    int port = Int32.Parse(args[2]);
-                    Program program = new Program(host, port);
+                Console.WriteLine("{0} v{1}", System.Reflection.Assembly.GetEntryAssembly().GetName().Name
+                    , System.Reflection.Assembly.GetEntryAssembly().GetName().Version);
 
-                    if (protocol.ToLower().Equals("tcp"))
-                    {
-                        program.HandleTcpClient();
-                    }
-                    else if (protocol.ToLower().Equals("udp"))
-                    {
-                        program.HandleUdpClient();
-                    }
-                    else
-                    {
-                        throw new Exception("Usage: TestClient.exe protocol host port");
-                    }
+                if (args.Length == 2)
+                {
+                    String host = args[0];
+                    int port = Int32.Parse(args[1]);
+                    Program program = new Program(host, port);
+                    Thread thread = new Thread(program.HandleUdpClient);
+
+                    thread.Start();
+                    program.HandleTcpClient();
+                    thread.Abort();
                 }
                 else
                 {
-                    throw new Exception("Usage: TestClient.exe protocol host port");
+                    throw new Exception("Usage: TestClient.exe host port");
                 }
             }
             catch (Exception exception)
