@@ -52,11 +52,14 @@ namespace TestServer
 
         public void HandleClient(Object obj)
         {
+            Socket client = null;
             Socket socket = null;
-            Socket client = (Socket)obj;
 
             try
             {
+                Thread.CurrentThread.IsBackground = true;
+
+                client = (Socket)obj;
                 IPEndPoint clientEndPoint = (IPEndPoint)client.RemoteEndPoint;
 
                 Console.WriteLine("Connection accepted: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port);
@@ -106,8 +109,10 @@ namespace TestServer
                 {
                     socket.Close();
                 }
-
-                client.Close();
+                if (client != null)
+                {
+                    client.Close();
+                }
             }
         }
 

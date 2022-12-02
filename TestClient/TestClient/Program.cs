@@ -87,6 +87,8 @@ namespace TestClient
 
             try
             {
+                Thread.CurrentThread.IsBackground = true;
+
                 socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
                 IPEndPoint socketEndPoint = new IPEndPoint(IPAddress.IPv6Any, port + 1);
 
@@ -132,7 +134,6 @@ namespace TestClient
 
                     thread.Start();
                     program.HandleTcpClient();
-                    thread.Abort();
                 }
                 else
                 {
