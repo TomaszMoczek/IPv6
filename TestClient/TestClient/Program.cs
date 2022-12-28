@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 
@@ -8,10 +9,10 @@ namespace TestClient
 {
     class Program
     {
-        private readonly String host;
+        private readonly string host;
         private readonly int port;
 
-        public Program(String host, int port)
+        public Program(string host, int port)
         {
             this.host = host;
             this.port = port;
@@ -29,8 +30,37 @@ namespace TestClient
                 socket.Connect(socketEndPoint);
 
                 {
+                    byte[] exponent = new byte[3];
+                    int length = socket.Receive(exponent);
+
+                    if (length != 3)
+                    {
+                        throw new Exception("Connection closed");
+                    }
+
+                    Console.WriteLine("Exponent [{0}]: {1}", exponent.Length, Convert.ToBase64String(exponent));
+
+                    byte[] modulus = new byte[128];
+                    length = socket.Receive(modulus);
+
+                    if (length != 128)
+                    {
+                        throw new Exception("Connection closed");
+                    }
+
+                    Console.WriteLine("Modulus [{0}]: {1}", modulus.Length, Convert.ToBase64String(modulus));
+
+                    RSAParameters rsaParameters = new RSAParameters();
+
+                    rsaParameters.Exponent = exponent;
+                    rsaParameters.Modulus = modulus;
+
+                    RSA rsa = RSA.Create();
+
+                    rsa.ImportParameters(rsaParameters);
+
                     byte[] data = new byte[1024];
-                    int length = socket.Receive(data);
+                    length = socket.Receive(data);
 
                     if (length == 0)
                     {
@@ -43,9 +73,9 @@ namespace TestClient
 
                 while (true)
                 {
-                    String text = Console.ReadLine();
+                    string text = Console.ReadLine();
 
-                    if (String.IsNullOrEmpty(text))
+                    if (string.IsNullOrEmpty(text))
                     {
                         throw new Exception("Connection closed");
                     }
@@ -94,7 +124,7 @@ namespace TestClient
 
                 socket.Bind(socketEndPoint);
 
-                EndPoint remoteEndPoint = (EndPoint)new IPEndPoint(IPAddress.IPv6Any, 0);
+                EndPoint remoteEndPoint = new IPEndPoint(IPAddress.IPv6Any, 0);
 
                 while (true)
                 {
@@ -127,8 +157,8 @@ namespace TestClient
 
                 if (args.Length == 2)
                 {
-                    String host = args[0];
-                    int port = Int32.Parse(args[1]);
+                    string host = args[0];
+                    int port = int.Parse(args[1]);
                     Program program = new Program(host, port);
                     Thread thread = new Thread(program.HandleUdpClient);
 

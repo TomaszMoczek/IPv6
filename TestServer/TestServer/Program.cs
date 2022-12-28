@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 
@@ -8,11 +9,17 @@ namespace TestServer
 {
     class Program
     {
+        private readonly RSA rsa;
+        private RSAParameters rsaParameters;
+
         private readonly int port;
 
         public Program(int port)
         {
             this.port = port;
+
+            rsa = RSA.Create();
+            rsaParameters = rsa.ExportParameters(false);
         }
 
         public void HandleServer()
@@ -50,7 +57,7 @@ namespace TestServer
             }
         }
 
-        public void HandleClient(Object obj)
+        public void HandleClient(object obj)
         {
             Socket client = null;
             Socket socket = null;
@@ -65,10 +72,22 @@ namespace TestServer
                 Console.WriteLine("Connection accepted: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port);
 
                 {
+                    Console.WriteLine("Exponent [{0}]: {1}", rsaParameters.Exponent.Length, Convert.ToBase64String(rsaParameters.Exponent));
+                    if (client.Send(rsaParameters.Exponent, rsaParameters.Exponent.Length, SocketFlags.None) == 0)
+                    {
+                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                    }
+
+                    Console.WriteLine("Modulus [{0}]: {1}", rsaParameters.Modulus.Length, Convert.ToBase64String(rsaParameters.Modulus));
+                    if (client.Send(rsaParameters.Modulus, rsaParameters.Modulus.Length, SocketFlags.None) == 0)
+                    {
+                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                    }
+
                     byte[] data = Encoding.ASCII.GetBytes("Welcome to the IPv6 Server!");
                     if (client.Send(data, data.Length, SocketFlags.None) == 0)
                     {
-                        throw new Exception(String.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
                 }
 
@@ -82,12 +101,12 @@ namespace TestServer
 
                     if (length == 0)
                     {
-                        throw new Exception(String.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
 
                     if (client.Send(data, length, SocketFlags.None) == 0)
                     {
-                        throw new Exception(String.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
 
                     for (int i = 0; i < 2; ++i)
@@ -125,7 +144,7 @@ namespace TestServer
 
                 if (args.Length == 1)
                 {
-                    int port = Int32.Parse(args[0]);
+                    int port = int.Parse(args[0]);
                     Program program = new Program(port);
 
                     program.HandleServer();
