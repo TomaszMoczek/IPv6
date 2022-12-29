@@ -74,8 +74,7 @@ namespace TestServer
 
                 Console.WriteLine("Connection accepted: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port);
 
-                byte[] iv = new byte[16];
-                byte[] key;
+                Aes aes = Aes.Create();
 
                 {
                     if (client.Send(rsaParameters.Exponent, rsaParameters.Exponent.Length, SocketFlags.None) == 0)
@@ -88,22 +87,30 @@ namespace TestServer
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
 
-                    if (client.Receive(iv) != iv.Length)
-                    {
-                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
-                    }
-
-                    byte[] data = new byte[128];
+                    byte[] data = new byte[rsaParameters.Modulus.Length];
 
                     if (client.Receive(data) != data.Length)
                     {
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
 
-                    key = rsa.DecryptValue(data);
+                    byte[] iv = rsa.DecryptValue(data);
 
-                    Console.WriteLine("IV [{0}]: {1}", iv.Length, Convert.ToBase64String(iv));
-                    Console.WriteLine("Key [{0}]: {1}", key.Length, Convert.ToBase64String(key));
+                    if (client.Receive(data) != data.Length)
+                    {
+                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                    }
+
+                    byte[] key = rsa.DecryptValue(data);
+
+                    Buffer.BlockCopy(iv, iv.Length - aes.IV.Length - 1, aes.IV, 0, aes.IV.Length);
+                    Buffer.BlockCopy(key, key.Length - aes.Key.Length - 1, aes.Key, 0, aes.Key.Length);
+
+                    Console.WriteLine("IV [{0}]: {1}", iv.Length, BitConverter.ToString(iv));
+                    Console.WriteLine("Key [{0}]: {1}", key.Length, BitConverter.ToString(key));
+
+                    Console.WriteLine("IV [{0}]: {1}", aes.IV.Length, BitConverter.ToString(aes.IV));
+                    Console.WriteLine("Key [{0}]: {1}", aes.Key.Length, BitConverter.ToString(aes.Key));
 
                     data = Encoding.ASCII.GetBytes("Welcome to the IPv6 Server!");
 
@@ -119,6 +126,7 @@ namespace TestServer
                 while (true)
                 {
                     byte[] data = new byte[1024];
+
                     int length = client.Receive(data);
 
                     if (length == 0)
@@ -167,6 +175,7 @@ namespace TestServer
                 if (args.Length == 1)
                 {
                     int port = int.Parse(args[0]);
+
                     Program program = new Program(port);
 
                     program.HandleServer();
