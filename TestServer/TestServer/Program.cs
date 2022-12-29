@@ -71,20 +71,42 @@ namespace TestServer
 
                 Console.WriteLine("Connection accepted: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port);
 
+                byte[] iv;
+                byte[] key;
+
                 {
-                    Console.WriteLine("Exponent [{0}]: {1}", rsaParameters.Exponent.Length, Convert.ToBase64String(rsaParameters.Exponent));
                     if (client.Send(rsaParameters.Exponent, rsaParameters.Exponent.Length, SocketFlags.None) == 0)
                     {
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
 
-                    Console.WriteLine("Modulus [{0}]: {1}", rsaParameters.Modulus.Length, Convert.ToBase64String(rsaParameters.Modulus));
                     if (client.Send(rsaParameters.Modulus, rsaParameters.Modulus.Length, SocketFlags.None) == 0)
                     {
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
 
-                    byte[] data = Encoding.ASCII.GetBytes("Welcome to the IPv6 Server!");
+                    byte[] data = new byte[128];
+
+                    if (client.Receive(data) != data.Length)
+                    {
+                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                    }
+
+                    Console.WriteLine("Data [{0}]: {1}", data.Length, Convert.ToBase64String(data));
+                    iv = rsa.DecryptValue(data);
+                    Console.WriteLine("IV [{0}]: {1}", iv.Length, Convert.ToBase64String(iv));
+
+                    if (client.Receive(data) != data.Length)
+                    {
+                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                    }
+
+                    Console.WriteLine("Data [{0}]: {1}", data.Length, Convert.ToBase64String(data));
+                    key = rsa.DecryptValue(data);
+                    Console.WriteLine("Key [{0}]: {1}", key.Length, Convert.ToBase64String(key));
+
+                    data = Encoding.ASCII.GetBytes("Welcome to the IPv6 Server!");
+
                     if (client.Send(data, data.Length, SocketFlags.None) == 0)
                     {
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));

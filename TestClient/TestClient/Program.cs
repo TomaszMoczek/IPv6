@@ -9,6 +9,8 @@ namespace TestClient
 {
     class Program
     {
+        private readonly Aes aes;
+
         private readonly string host;
         private readonly int port;
 
@@ -16,6 +18,8 @@ namespace TestClient
         {
             this.host = host;
             this.port = port;
+
+            aes = Aes.Create();
         }
 
         public void HandleTcpClient()
@@ -31,36 +35,49 @@ namespace TestClient
 
                 {
                     byte[] exponent = new byte[3];
-                    int length = socket.Receive(exponent);
 
-                    if (length != 3)
+                    if (socket.Receive(exponent) != exponent.Length)
                     {
                         throw new Exception("Connection closed");
                     }
-
-                    Console.WriteLine("Exponent [{0}]: {1}", exponent.Length, Convert.ToBase64String(exponent));
 
                     byte[] modulus = new byte[128];
-                    length = socket.Receive(modulus);
 
-                    if (length != 128)
+                    if (socket.Receive(modulus) != modulus.Length)
                     {
                         throw new Exception("Connection closed");
                     }
 
-                    Console.WriteLine("Modulus [{0}]: {1}", modulus.Length, Convert.ToBase64String(modulus));
-
-                    RSAParameters rsaParameters = new RSAParameters();
-
-                    rsaParameters.Exponent = exponent;
-                    rsaParameters.Modulus = modulus;
+                    RSAParameters rsaParameters = new RSAParameters
+                    {
+                        Exponent = exponent,
+                        Modulus = modulus
+                    };
 
                     RSA rsa = RSA.Create();
 
                     rsa.ImportParameters(rsaParameters);
 
-                    byte[] data = new byte[1024];
-                    length = socket.Receive(data);
+                    Console.WriteLine("IV [{0}]: {1}", aes.IV.Length, Convert.ToBase64String(aes.IV));
+                    byte[] data = rsa.EncryptValue(aes.IV);
+                    Console.WriteLine("Data [{0}]: {1}", data.Length, Convert.ToBase64String(data));
+
+                    if (socket.Send(data, data.Length, SocketFlags.None) == 0)
+                    {
+                        throw new Exception("Connection closed");
+                    }
+
+                    Console.WriteLine("Key [{0}]: {1}", aes.Key.Length, Convert.ToBase64String(aes.Key));
+                    data = rsa.EncryptValue(aes.Key);
+                    Console.WriteLine("Data [{0}]: {1}", data.Length, Convert.ToBase64String(data));
+
+                    if (socket.Send(data, data.Length, SocketFlags.None) == 0)
+                    {
+                        throw new Exception("Connection closed");
+                    }
+
+                    data = new byte[1024];
+                    int length = socket.Receive(data);
 
                     if (length == 0)
                     {
