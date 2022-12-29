@@ -20,6 +20,9 @@ namespace TestServer
 
             rsa = RSA.Create();
             rsaParameters = rsa.ExportParameters(false);
+
+            Console.WriteLine("Exponent [{0}]: {1}", rsaParameters.Exponent.Length, Convert.ToBase64String(rsaParameters.Exponent));
+            Console.WriteLine("Modulus [{0}]: {1}", rsaParameters.Modulus.Length, Convert.ToBase64String(rsaParameters.Modulus));
         }
 
         public void HandleServer()
@@ -71,7 +74,7 @@ namespace TestServer
 
                 Console.WriteLine("Connection accepted: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port);
 
-                byte[] iv;
+                byte[] iv = new byte[16];
                 byte[] key;
 
                 {
@@ -85,6 +88,11 @@ namespace TestServer
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
 
+                    if (client.Receive(iv) != iv.Length)
+                    {
+                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                    }
+
                     byte[] data = new byte[128];
 
                     if (client.Receive(data) != data.Length)
@@ -92,17 +100,9 @@ namespace TestServer
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
 
-                    Console.WriteLine("Data [{0}]: {1}", data.Length, Convert.ToBase64String(data));
-                    iv = rsa.DecryptValue(data);
-                    Console.WriteLine("IV [{0}]: {1}", iv.Length, Convert.ToBase64String(iv));
-
-                    if (client.Receive(data) != data.Length)
-                    {
-                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
-                    }
-
-                    Console.WriteLine("Data [{0}]: {1}", data.Length, Convert.ToBase64String(data));
                     key = rsa.DecryptValue(data);
+
+                    Console.WriteLine("IV [{0}]: {1}", iv.Length, Convert.ToBase64String(iv));
                     Console.WriteLine("Key [{0}]: {1}", key.Length, Convert.ToBase64String(key));
 
                     data = Encoding.ASCII.GetBytes("Welcome to the IPv6 Server!");
