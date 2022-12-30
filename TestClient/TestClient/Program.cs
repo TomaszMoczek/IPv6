@@ -21,8 +21,12 @@ namespace TestClient
 
             aes = Aes.Create();
 
-            Console.WriteLine("IV [{0}]: {1}", aes.IV.Length, BitConverter.ToString(aes.IV));
-            Console.WriteLine("Key [{0}]: {1}", aes.Key.Length, BitConverter.ToString(aes.Key));
+            aes.KeySize = 256;
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.PKCS7;
+
+            Console.WriteLine("IV [{0}]: {1}", aes.IV.Length, Convert.ToBase64String(aes.IV));
+            Console.WriteLine("Key [{0}]: {1}", aes.Key.Length, Convert.ToBase64String(aes.Key));
         }
 
         public void HandleTcpClient()
@@ -38,6 +42,9 @@ namespace TestClient
 
                 {
                     RSA rsa = RSA.Create();
+
+                    rsa.KeySize = 1024;
+
                     RSAParameters rsaParameters = rsa.ExportParameters(false);
 
                     if (socket.Receive(rsaParameters.Exponent) != rsaParameters.Exponent.Length)
@@ -54,14 +61,14 @@ namespace TestClient
 
                     byte[] data = rsa.EncryptValue(aes.IV);
 
-                    if (socket.Send(data, data.Length, SocketFlags.None) == 0)
+                    if (socket.Send(data, data.Length, SocketFlags.None) != data.Length)
                     {
                         throw new Exception("Connection closed");
                     }
 
                     data = rsa.EncryptValue(aes.Key);
 
-                    if (socket.Send(data, data.Length, SocketFlags.None) == 0)
+                    if (socket.Send(data, data.Length, SocketFlags.None) != data.Length)
                     {
                         throw new Exception("Connection closed");
                     }
@@ -90,22 +97,23 @@ namespace TestClient
 
                     byte[] data = Encoding.ASCII.GetBytes(text);
 
-                    if (socket.Send(data, data.Length, SocketFlags.None) == 0)
+                    if (data.Length > 1024)
                     {
                         throw new Exception("Connection closed");
                     }
 
-                    data = new byte[1024];
+                    if (socket.Send(data, data.Length, SocketFlags.None) != data.Length)
+                    {
+                        throw new Exception("Connection closed");
+                    }
 
-                    int length = socket.Receive(data);
-
-                    if (length == 0)
+                    if (socket.Receive(data) != data.Length)
                     {
                         throw new Exception("Connection closed");
                     }
 
                     Console.WriteLine("[{0}]:{1}: {2}", socketEndPoint.Address, socketEndPoint.Port
-                        , Encoding.ASCII.GetString(data, 0, length));
+                        , Encoding.ASCII.GetString(data, 0, data.Length));
                 }
             }
             catch (Exception exception)

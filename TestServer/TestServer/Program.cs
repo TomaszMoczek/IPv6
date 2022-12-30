@@ -19,6 +19,9 @@ namespace TestServer
             this.port = port;
 
             rsa = RSA.Create();
+
+            rsa.KeySize = 1024;
+
             rsaParameters = rsa.ExportParameters(false);
 
             Console.WriteLine("Exponent [{0}]: {1}", rsaParameters.Exponent.Length, Convert.ToBase64String(rsaParameters.Exponent));
@@ -76,13 +79,20 @@ namespace TestServer
 
                 Aes aes = Aes.Create();
 
+                aes.KeySize = 256;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+
+                byte[] IV = new byte[aes.IV.Length];
+                byte[] Key = new byte[aes.Key.Length];
+
                 {
-                    if (client.Send(rsaParameters.Exponent, rsaParameters.Exponent.Length, SocketFlags.None) == 0)
+                    if (client.Send(rsaParameters.Exponent, rsaParameters.Exponent.Length, SocketFlags.None) != rsaParameters.Exponent.Length)
                     {
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
 
-                    if (client.Send(rsaParameters.Modulus, rsaParameters.Modulus.Length, SocketFlags.None) == 0)
+                    if (client.Send(rsaParameters.Modulus, rsaParameters.Modulus.Length, SocketFlags.None) != rsaParameters.Modulus.Length)
                     {
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
@@ -103,18 +113,15 @@ namespace TestServer
 
                     byte[] key = rsa.DecryptValue(data);
 
-                    Buffer.BlockCopy(iv, iv.Length - aes.IV.Length - 1, aes.IV, 0, aes.IV.Length);
-                    Buffer.BlockCopy(key, key.Length - aes.Key.Length - 1, aes.Key, 0, aes.Key.Length);
+                    Buffer.BlockCopy(iv, iv.Length - IV.Length, IV, 0, IV.Length);
+                    Buffer.BlockCopy(key, key.Length - Key.Length, Key, 0, Key.Length);
 
-                    Console.WriteLine("IV [{0}]: {1}", iv.Length, BitConverter.ToString(iv));
-                    Console.WriteLine("Key [{0}]: {1}", key.Length, BitConverter.ToString(key));
-
-                    Console.WriteLine("IV [{0}]: {1}", aes.IV.Length, BitConverter.ToString(aes.IV));
-                    Console.WriteLine("Key [{0}]: {1}", aes.Key.Length, BitConverter.ToString(aes.Key));
+                    Console.WriteLine("[{0}]:{1}: IV [{2}]: {3}", clientEndPoint.Address, clientEndPoint.Port, IV.Length, Convert.ToBase64String(IV));
+                    Console.WriteLine("[{0}]:{1}: Key [{2}]: {3}", clientEndPoint.Address, clientEndPoint.Port, Key.Length, Convert.ToBase64String(Key));
 
                     data = Encoding.ASCII.GetBytes("Welcome to the IPv6 Server!");
 
-                    if (client.Send(data, data.Length, SocketFlags.None) == 0)
+                    if (client.Send(data, data.Length, SocketFlags.None) != data.Length)
                     {
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
@@ -134,14 +141,14 @@ namespace TestServer
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
 
-                    if (client.Send(data, length, SocketFlags.None) == 0)
+                    if (client.Send(data, length, SocketFlags.None) != length)
                     {
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
 
                     for (int i = 0; i < 2; ++i)
                     {
-                        if (socket.SendTo(data, length, SocketFlags.None, socketEndPoint) == 0)
+                        if (socket.SendTo(data, length, SocketFlags.None, socketEndPoint) != length)
                         {
                             Console.WriteLine("Failed to send datagram: [{0}]:{1}", socketEndPoint.Address, socketEndPoint.Port);
                         }
