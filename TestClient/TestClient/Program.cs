@@ -25,9 +25,6 @@ namespace TestClient
             aes.KeySize = 256;
             aes.Mode = CipherMode.CBC;
             aes.Padding = PaddingMode.PKCS7;
-
-            Console.WriteLine("IV [{0}]: {1}", aes.IV.Length, Convert.ToBase64String(aes.IV));
-            Console.WriteLine("Key [{0}]: {1}", aes.Key.Length, Convert.ToBase64String(aes.Key));
         }
 
         public void HandleTcpClient()
@@ -90,32 +87,41 @@ namespace TestClient
 
                 while (true)
                 {
-                    string text = Console.ReadLine();
-
-                    if (string.IsNullOrEmpty(text))
                     {
-                        throw new Exception("Connection closed");
+                        string plaintext = Console.ReadLine();
+
+                        if (string.IsNullOrEmpty(plaintext))
+                        {
+                            throw new Exception("Connection closed");
+                        }
+
+                        byte[] ciphertext = Encrypt(plaintext, aes.IV, aes.Key);
+
+                        if (ciphertext.Length > 1024)
+                        {
+                            throw new Exception("Connection closed");
+                        }
+
+                        if (socket.Send(ciphertext, ciphertext.Length, SocketFlags.None) != ciphertext.Length)
+                        {
+                            throw new Exception("Connection closed");
+                        }
                     }
 
-                    byte[] data = Encoding.ASCII.GetBytes(text);
-
-                    if (data.Length > 1024)
                     {
-                        throw new Exception("Connection closed");
-                    }
+                        byte[] ciphertext = new byte[1024];
 
-                    if (socket.Send(data, data.Length, SocketFlags.None) != data.Length)
-                    {
-                        throw new Exception("Connection closed");
-                    }
+                        int lenght = socket.Receive(ciphertext);
 
-                    if (socket.Receive(data) != data.Length)
-                    {
-                        throw new Exception("Connection closed");
-                    }
+                        if (lenght == 0)
+                        {
+                            throw new Exception("Connection closed");
+                        }
 
-                    Console.WriteLine("[{0}]:{1}: {2}", socketEndPoint.Address, socketEndPoint.Port
-                        , Encoding.ASCII.GetString(data, 0, data.Length));
+                        string plaintext = Decrypt(ciphertext, lenght, aes.IV, aes.Key);
+
+                        Console.WriteLine("[{0}]:{1}: {2}", socketEndPoint.Address, socketEndPoint.Port, plaintext);
+                    }
                 }
             }
             catch (Exception exception)
@@ -148,12 +154,22 @@ namespace TestClient
 
                 while (true)
                 {
-                    byte[] data = new byte[1024];
+                    byte[] ciphertext = new byte[1024];
 
-                    int length = socket.ReceiveFrom(data, ref remoteEndPoint);
+                    int length = socket.ReceiveFrom(ciphertext, ref remoteEndPoint);
 
-                    Console.WriteLine("[{0}]:{1}: {2}", ((IPEndPoint)remoteEndPoint).Address, ((IPEndPoint)remoteEndPoint).Port
-                        , length == 0 ? "Failed to receive datagram" : Encoding.ASCII.GetString(data, 0, length));
+                    if (length == 0)
+                    {
+                        Console.WriteLine("[{0}]:{1}: {2}", ((IPEndPoint)remoteEndPoint).Address, ((IPEndPoint)remoteEndPoint).Port
+                            , "Failed to receive datagram");
+                    }
+                    else
+                    {
+                        string plaintext = Decrypt(ciphertext, length, aes.IV, aes.Key);
+
+                        Console.WriteLine("[{0}]:{1}: {2}", ((IPEndPoint)remoteEndPoint).Address, ((IPEndPoint)remoteEndPoint).Port
+                            , plaintext);
+                    }
                 }
             }
             catch (Exception exception)

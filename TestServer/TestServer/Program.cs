@@ -24,9 +24,6 @@ namespace TestServer
             rsa.KeySize = 1024;
 
             rsaParameters = rsa.ExportParameters(false);
-
-            Console.WriteLine("Exponent [{0}]: {1}", rsaParameters.Exponent.Length, Convert.ToBase64String(rsaParameters.Exponent));
-            Console.WriteLine("Modulus [{0}]: {1}", rsaParameters.Modulus.Length, Convert.ToBase64String(rsaParameters.Modulus));
         }
 
         public void HandleServer()
@@ -117,10 +114,8 @@ namespace TestServer
                     Buffer.BlockCopy(iv, iv.Length - IV.Length, IV, 0, IV.Length);
                     Buffer.BlockCopy(key, key.Length - Key.Length, Key, 0, Key.Length);
 
-                    Console.WriteLine("[{0}]:{1}: IV [{2}]: {3}", clientEndPoint.Address, clientEndPoint.Port, IV.Length, Convert.ToBase64String(IV));
-                    Console.WriteLine("[{0}]:{1}: Key [{2}]: {3}", clientEndPoint.Address, clientEndPoint.Port, Key.Length, Convert.ToBase64String(Key));
-
                     string plaintext = "Welcome to the IPv6 Server!";
+
                     byte[] ciphertext = Encrypt(plaintext, IV, Key);
 
                     if (client.Send(ciphertext, ciphertext.Length, SocketFlags.None) != ciphertext.Length)
@@ -134,25 +129,35 @@ namespace TestServer
 
                 while (true)
                 {
-                    byte[] data = new byte[1024];
+                    string plaintext;
 
-                    int length = client.Receive(data);
-
-                    if (length == 0)
                     {
-                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
-                    }
+                        byte[] ciphertext = new byte[1024];
 
-                    if (client.Send(data, length, SocketFlags.None) != length)
-                    {
-                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
-                    }
+                        int length = client.Receive(ciphertext);
 
-                    for (int i = 0; i < 2; ++i)
-                    {
-                        if (socket.SendTo(data, length, SocketFlags.None, socketEndPoint) != length)
+                        if (length == 0)
                         {
-                            Console.WriteLine("Failed to send datagram: [{0}]:{1}", socketEndPoint.Address, socketEndPoint.Port);
+                            throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                        }
+
+                        plaintext = Decrypt(ciphertext, length, IV, Key);
+                    }
+
+                    {
+                        byte[] ciphertext = Encrypt(plaintext, IV, Key);
+
+                        if (client.Send(ciphertext, ciphertext.Length, SocketFlags.None) != ciphertext.Length)
+                        {
+                            throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                        }
+
+                        for (int i = 0; i < 2; ++i)
+                        {
+                            if (socket.SendTo(ciphertext, ciphertext.Length, SocketFlags.None, socketEndPoint) != ciphertext.Length)
+                            {
+                                Console.WriteLine("Failed to send datagram: [{0}]:{1}", socketEndPoint.Address, socketEndPoint.Port);
+                            }
                         }
                     }
                 }
