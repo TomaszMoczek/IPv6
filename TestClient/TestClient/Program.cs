@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -73,17 +74,18 @@ namespace TestClient
                         throw new Exception("Connection closed");
                     }
 
-                    data = new byte[1024];
+                    byte[] ciphertext = new byte[1024];
 
-                    int length = socket.Receive(data);
+                    int length = socket.Receive(ciphertext);
 
                     if (length == 0)
                     {
                         throw new Exception("Connection closed");
                     }
 
-                    Console.WriteLine("[{0}]:{1}: {2}", socketEndPoint.Address, socketEndPoint.Port
-                        , Encoding.ASCII.GetString(data, 0, length));
+                    string plaintext = Decrypt(ciphertext, length, aes.IV, aes.Key);
+
+                    Console.WriteLine("[{0}]:{1}: {2}", socketEndPoint.Address, socketEndPoint.Port, plaintext);
                 }
 
                 while (true)
@@ -165,6 +167,67 @@ namespace TestClient
                     socket.Close();
                 }
             }
+        }
+
+        private byte[] Encrypt(string plaintext, byte[] IV, byte[] Key)
+        {
+            byte[] ciphertext;
+
+            using (Aes aes = Aes.Create())
+            {
+                aes.KeySize = 256;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+
+                aes.IV = IV;
+                aes.Key = Key;
+
+                ICryptoTransform encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
+
+                using (MemoryStream memoryStream = new MemoryStream())
+                {
+                    using (CryptoStream cryptoStream = new CryptoStream(memoryStream, encryptor, CryptoStreamMode.Write))
+                    {
+                        using (StreamWriter streamWriter = new StreamWriter(cryptoStream))
+                        {
+                            streamWriter.Write(plaintext);
+                        }
+                    }
+                    ciphertext = memoryStream.ToArray();
+                }
+            }
+
+            return ciphertext;
+        }
+
+        private string Decrypt(byte[] ciphertext, int length, byte[] IV, byte[] Key)
+        {
+            string plaintext;
+
+            using (Aes aes = Aes.Create())
+            {
+                aes.KeySize = 256;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+
+                aes.IV = IV;
+                aes.Key = Key;
+
+                ICryptoTransform decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
+
+                using (MemoryStream memoryStream = new MemoryStream(ciphertext, 0, length))
+                {
+                    using (CryptoStream cryptoStream = new CryptoStream(memoryStream, decryptor, CryptoStreamMode.Read))
+                    {
+                        using (StreamReader streamReader = new StreamReader(cryptoStream))
+                        {
+                            plaintext = streamReader.ReadToEnd();
+                        }
+                    }
+                }
+            }
+
+            return plaintext;
         }
 
         static void Main(string[] args)
