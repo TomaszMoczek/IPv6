@@ -14,11 +14,13 @@ namespace TestClient
 
         private readonly string host;
         private readonly int port;
+        private readonly int localport;
 
         public Program(string host, int port)
         {
             this.host = host;
             this.port = port;
+            this.localport = new Random().Next(49152, 65535);
 
             aes = Aes.Create();
 
@@ -83,44 +85,34 @@ namespace TestClient
                     string plaintext = Decrypt(ciphertext, length, aes.IV, aes.Key);
 
                     Console.WriteLine("[{0}]:{1}: {2}", socketEndPoint.Address, socketEndPoint.Port, plaintext);
+
+                    ciphertext = Encrypt(localport.ToString(), aes.IV, aes.Key);
+
+                    if (socket.Send(ciphertext, ciphertext.Length, SocketFlags.None) != ciphertext.Length)
+                    {
+                        throw new Exception("Connection closed");
+                    }
                 }
 
                 while (true)
                 {
+                    string plaintext = Console.ReadLine();
+
+                    if (string.IsNullOrEmpty(plaintext))
                     {
-                        string plaintext = Console.ReadLine();
-
-                        if (string.IsNullOrEmpty(plaintext))
-                        {
-                            throw new Exception("Connection closed");
-                        }
-
-                        byte[] ciphertext = Encrypt(plaintext, aes.IV, aes.Key);
-
-                        if (ciphertext.Length > 1024)
-                        {
-                            throw new Exception("Connection closed");
-                        }
-
-                        if (socket.Send(ciphertext, ciphertext.Length, SocketFlags.None) != ciphertext.Length)
-                        {
-                            throw new Exception("Connection closed");
-                        }
+                        throw new Exception("Connection closed");
                     }
 
+                    byte[] ciphertext = Encrypt(plaintext, aes.IV, aes.Key);
+
+                    if (ciphertext.Length > 1024)
                     {
-                        byte[] ciphertext = new byte[1024];
+                        throw new Exception("Connection closed");
+                    }
 
-                        int lenght = socket.Receive(ciphertext);
-
-                        if (lenght == 0)
-                        {
-                            throw new Exception("Connection closed");
-                        }
-
-                        string plaintext = Decrypt(ciphertext, lenght, aes.IV, aes.Key);
-
-                        Console.WriteLine("[{0}]:{1}: {2}", socketEndPoint.Address, socketEndPoint.Port, plaintext);
+                    if (socket.Send(ciphertext, ciphertext.Length, SocketFlags.None) != ciphertext.Length)
+                    {
+                        throw new Exception("Connection closed");
                     }
                 }
             }
@@ -146,7 +138,7 @@ namespace TestClient
                 Thread.CurrentThread.IsBackground = true;
 
                 socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
-                IPEndPoint socketEndPoint = new IPEndPoint(IPAddress.IPv6Any, port + 1);
+                IPEndPoint socketEndPoint = new IPEndPoint(IPAddress.IPv6Any, localport);
 
                 socket.Bind(socketEndPoint);
 

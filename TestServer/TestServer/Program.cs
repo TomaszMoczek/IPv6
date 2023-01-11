@@ -84,6 +84,8 @@ namespace TestServer
                 byte[] IV = new byte[aes.IV.Length];
                 byte[] Key = new byte[aes.Key.Length];
 
+                IPEndPoint socketEndPoint;
+
                 {
                     if (client.Send(rsaParameters.Exponent, rsaParameters.Exponent.Length, SocketFlags.None) != rsaParameters.Exponent.Length)
                     {
@@ -122,10 +124,20 @@ namespace TestServer
                     {
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
+
+                    int length = client.Receive(ciphertext);
+
+                    if (length == 0)
+                    {
+                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                    }
+
+                    plaintext = Decrypt(ciphertext, length, IV, Key);
+
+                    socketEndPoint = new IPEndPoint(clientEndPoint.Address, int.Parse(plaintext));
                 }
 
                 socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
-                IPEndPoint socketEndPoint = new IPEndPoint(clientEndPoint.Address, port + 1);
 
                 while (true)
                 {
@@ -147,17 +159,9 @@ namespace TestServer
                     {
                         byte[] ciphertext = Encrypt(plaintext, IV, Key);
 
-                        if (client.Send(ciphertext, ciphertext.Length, SocketFlags.None) != ciphertext.Length)
+                        if (socket.SendTo(ciphertext, ciphertext.Length, SocketFlags.None, socketEndPoint) != ciphertext.Length)
                         {
-                            throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
-                        }
-
-                        for (int i = 0; i < 2; ++i)
-                        {
-                            if (socket.SendTo(ciphertext, ciphertext.Length, SocketFlags.None, socketEndPoint) != ciphertext.Length)
-                            {
-                                Console.WriteLine("Failed to send datagram: [{0}]:{1}", socketEndPoint.Address, socketEndPoint.Port);
-                            }
+                            Console.WriteLine("Failed to send datagram: [{0}]:{1}", socketEndPoint.Address, socketEndPoint.Port);
                         }
                     }
                 }
