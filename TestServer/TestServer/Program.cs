@@ -32,7 +32,7 @@ namespace TestServer
                 this.key = new byte[key.Length];
                 Buffer.BlockCopy(key, 0, this.key, 0, key.Length);
 
-                this.plaintext = String.Empty;
+                this.plaintext = "CONNECTED";
             }
 
             public IPEndPoint EndPoint
@@ -134,6 +134,8 @@ namespace TestServer
                 byte[] IV = new byte[aes.IV.Length];
                 byte[] Key = new byte[aes.Key.Length];
 
+                Guid guid = Guid.NewGuid();
+
                 IPEndPoint socketEndPoint;
 
                 {
@@ -189,6 +191,10 @@ namespace TestServer
 
                 socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
 
+                int count = OnConnected(socket, guid, socketEndPoint.Address, socketEndPoint.Port, IV, Key);
+
+                Console.WriteLine("Connection count: {0}", count);
+
                 while (true)
                 {
                     string plaintext;
@@ -233,30 +239,80 @@ namespace TestServer
             }
         }
 
-        private void OnConnected(Socket socket, Guid guid, IPAddress address, int port, byte[] iv, byte[] key)
+        private int OnConnected(Socket socket, Guid guid, IPAddress address, int port, byte[] iv, byte[] key)
         {
+            int count = 0;
             Client client = new Client(address, port, iv, key);
 
             lock(obj)
             {
+                foreach (Guid Key in clients.Keys)
+                {
+                    {
+                        string plaintext = Key.ToString() + "|" + clients[Key].Plaintext;
+                        byte[] ciphertext = Encrypt(plaintext, client.IV, client.Key);
+
+                        if (socket.SendTo(ciphertext, ciphertext.Length, SocketFlags.None, client.EndPoint) != ciphertext.Length)
+                        {
+                            Console.WriteLine("Failed to send datagram: [{0}]:{1}", client.EndPoint.Address, client.EndPoint.Port);
+                        }
+                    }
+
+                    {
+                        string plaintext = guid.ToString() + "|" + client.Plaintext;
+                        byte[] ciphertext = Encrypt(plaintext, clients[Key].IV, clients[Key].Key);
+
+                        if (socket.SendTo(ciphertext, ciphertext.Length, SocketFlags.None, clients[Key].EndPoint) != ciphertext.Length)
+                        {
+                            Console.WriteLine("Failed to send datagram: [{0}]:{1}"
+                                , clients[Key].EndPoint.Address, clients[Key].EndPoint.Port);
+                        }
+                    }
+                }
+
                 clients.Add(guid, client);
+
+                count = clients.Count;
             }
+
+            return count;
         }
 
         private void OnDataReceived(Socket socket, Guid guid, string plaintext)
         {
             lock(obj)
             {
-                clients[guid].Plaintext = plaintext;
+                foreach (Guid Key in clients.Keys)
+                {
+                    if (Key.Equals(guid))
+                    {
+                        clients[guid].Plaintext = plaintext;
+                    }
+                    else
+                    {
+
+                    }
+                }
             }
         }
 
-        private void OnDisconnected(Socket socket, Guid guid)
+        private int OnDisconnected(Socket socket, Guid guid)
         {
+            int count = 0;
+
             lock(obj)
             {
-                clients.Remove(guid);
+                if (clients.Remove(guid))
+                {
+                    foreach (Guid Key in clients.Keys)
+                    {
+
+                    }
+                }
+                count = clients.Count;
             }
+
+            return count;
         }
 
         private byte[] Encrypt(string plaintext, byte[] IV, byte[] Key)
