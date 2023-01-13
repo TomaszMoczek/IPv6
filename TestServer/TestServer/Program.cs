@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -15,6 +16,51 @@ namespace TestServer
 
         private readonly int port;
 
+        private class Client
+        {
+            private readonly IPEndPoint endPoint;
+            private readonly byte[] iv;
+            private readonly byte[] key;
+
+            private string plaintext;
+
+            public Client(IPAddress address, int port, byte[] iv, byte[] key)
+            {
+                this.endPoint = new IPEndPoint(address, port);
+                this.iv = new byte[iv.Length];
+                Buffer.BlockCopy(iv, 0, this.iv, 0, iv.Length);
+                this.key = new byte[key.Length];
+                Buffer.BlockCopy(key, 0, this.key, 0, key.Length);
+
+                this.plaintext = String.Empty;
+            }
+
+            public IPEndPoint EndPoint
+            {
+                get { return endPoint; }
+            }
+
+            public byte[] IV
+            {
+                get { return iv; }
+            }
+
+            public byte[] Key
+            {
+                get { return key; }
+            }
+
+            public string Plaintext
+            {
+                get { return plaintext; }
+                set { plaintext = value; }
+            }
+        }
+
+        private readonly object obj;
+
+        private readonly Dictionary<Guid, Client> clients;
+
         public Program(int port)
         {
             this.port = port;
@@ -24,6 +70,10 @@ namespace TestServer
             rsa.KeySize = 1024;
 
             rsaParameters = rsa.ExportParameters(false);
+
+            obj = new object();
+
+            clients = new Dictionary<Guid, Client>();
         }
 
         public void HandleServer()
@@ -180,6 +230,32 @@ namespace TestServer
                 {
                     client.Close();
                 }
+            }
+        }
+
+        private void OnConnected(Socket socket, Guid guid, IPAddress address, int port, byte[] iv, byte[] key)
+        {
+            Client client = new Client(address, port, iv, key);
+
+            lock(obj)
+            {
+                clients.Add(guid, client);
+            }
+        }
+
+        private void OnDataReceived(Socket socket, Guid guid, string plaintext)
+        {
+            lock(obj)
+            {
+                clients[guid].Plaintext = plaintext;
+            }
+        }
+
+        private void OnDisconnected(Socket socket, Guid guid)
+        {
+            lock(obj)
+            {
+                clients.Remove(guid);
             }
         }
 
