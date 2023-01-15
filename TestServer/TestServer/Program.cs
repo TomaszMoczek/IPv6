@@ -98,6 +98,10 @@ namespace TestServer
                     thread.Start(client);
                 }
             }
+            catch (SocketException exception)
+            {
+                Console.WriteLine("{0} [Error code: {1}]", exception.Message, exception.ErrorCode);
+            }
             catch (Exception exception)
             {
                 Console.WriteLine(exception.Message);
@@ -115,6 +119,7 @@ namespace TestServer
         {
             Socket client = null;
             Socket socket = null;
+            Guid guid = Guid.NewGuid();
 
             try
             {
@@ -131,12 +136,10 @@ namespace TestServer
                 aes.Mode = CipherMode.CBC;
                 aes.Padding = PaddingMode.PKCS7;
 
+                int remoteport;
+
                 byte[] IV = new byte[aes.IV.Length];
                 byte[] Key = new byte[aes.Key.Length];
-
-                Guid guid = Guid.NewGuid();
-
-                IPEndPoint socketEndPoint;
 
                 {
                     if (client.Send(rsaParameters.Exponent, rsaParameters.Exponent.Length, SocketFlags.None) != rsaParameters.Exponent.Length)
@@ -151,16 +154,28 @@ namespace TestServer
 
                     byte[] data = new byte[rsaParameters.Modulus.Length];
 
-                    if (client.Receive(data) != data.Length)
+                    int received = 0;
+                    while (received < data.Length)
                     {
-                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                        int _received = client.Receive(data, received, data.Length - received, SocketFlags.None);
+                        if (_received == 0)
+                        {
+                            throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                        }
+                        received += _received;
                     }
 
                     byte[] iv = rsa.DecryptValue(data);
 
-                    if (client.Receive(data) != data.Length)
+                    received = 0;
+                    while (received < data.Length)
                     {
-                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                        int _received = client.Receive(data, received, data.Length - received, SocketFlags.None);
+                        if (_received == 0)
+                        {
+                            throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                        }
+                        received += _received;
                     }
 
                     byte[] key = rsa.DecryptValue(data);
@@ -168,30 +183,57 @@ namespace TestServer
                     Buffer.BlockCopy(iv, iv.Length - IV.Length, IV, 0, IV.Length);
                     Buffer.BlockCopy(key, key.Length - Key.Length, Key, 0, Key.Length);
 
-                    string plaintext = "Welcome to the IPv6 Server!";
+                    string plaintext = string.Format("{0} v{1}", "Welcome to the IPv6 Server", System.Reflection.Assembly.GetEntryAssembly().GetName().Version);
 
                     byte[] ciphertext = Encrypt(plaintext, IV, Key);
+
+                    byte[] bytes = BitConverter.GetBytes(ciphertext.Length);
+
+                    if (client.Send(bytes, bytes.Length, SocketFlags.None) != bytes.Length)
+                    {
+                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                    }
 
                     if (client.Send(ciphertext, ciphertext.Length, SocketFlags.None) != ciphertext.Length)
                     {
                         throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                     }
 
-                    int length = client.Receive(ciphertext);
-
-                    if (length == 0)
+                    received = 0;
+                    while (received < bytes.Length)
                     {
-                        throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                        int _received = client.Receive(bytes, received, bytes.Length - received, SocketFlags.None);
+                        if (_received == 0)
+                        {
+                            throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                        }
+                        received += _received;
                     }
 
-                    plaintext = Decrypt(ciphertext, length, IV, Key);
+                    int length = BitConverter.ToInt32(bytes, 0);
 
-                    socketEndPoint = new IPEndPoint(clientEndPoint.Address, int.Parse(plaintext));
+                    ciphertext = new byte[length];
+
+                    received = 0;
+                    while (received < ciphertext.Length)
+                    {
+                        int _received = client.Receive(ciphertext, received, ciphertext.Length - received, SocketFlags.None);
+                        if (_received == 0)
+                        {
+                            throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                        }
+                        received += _received;
+                    }
+
+                    plaintext = Decrypt(ciphertext, ciphertext.Length, IV, Key);
+
+                    remoteport = int.Parse(plaintext);
                 }
 
                 socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
+                IPEndPoint socketEndPoint = new IPEndPoint(clientEndPoint.Address, remoteport);
 
-                int count = OnConnected(socket, guid, socketEndPoint.Address, socketEndPoint.Port, IV, Key);
+                int count = OnConnected(socket, guid, clientEndPoint.Address, remoteport, IV, Key);
 
                 Console.WriteLine("Connection count: {0}", count);
 
@@ -200,16 +242,35 @@ namespace TestServer
                     string plaintext;
 
                     {
-                        byte[] ciphertext = new byte[1024];
+                        byte[] bytes = BitConverter.GetBytes(int.MaxValue);
 
-                        int length = client.Receive(ciphertext);
-
-                        if (length == 0)
+                        int received = 0;
+                        while (received < bytes.Length)
                         {
-                            throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                            int _received = client.Receive(bytes, received, bytes.Length - received, SocketFlags.None);
+                            if (_received == 0)
+                            {
+                                throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                            }
+                            received += _received;
                         }
 
-                        plaintext = Decrypt(ciphertext, length, IV, Key);
+                        int length = BitConverter.ToInt32(bytes, 0);
+
+                        byte[] ciphertext = new byte[length];
+
+                        received = 0;
+                        while (received < ciphertext.Length)
+                        {
+                            int _received = client.Receive(ciphertext, received, ciphertext.Length - received, SocketFlags.None);
+                            if (_received == 0)
+                            {
+                                throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
+                            }
+                            received += _received;
+                        }
+
+                        plaintext = Decrypt(ciphertext, ciphertext.Length, IV, Key);
                     }
 
                     {
@@ -221,6 +282,10 @@ namespace TestServer
                         }
                     }
                 }
+            }
+            catch (SocketException exception)
+            {
+                Console.WriteLine("{0} [Error code: {1}]", exception.Message, exception.ErrorCode);
             }
             catch (Exception exception)
             {
