@@ -45,92 +45,100 @@ namespace TestClient
 
                     rsa.KeySize = 1024;
 
-                    RSAParameters rsaParameters = rsa.ExportParameters(false);
-
-                    int received = 0;
-                    while (received < rsaParameters.Exponent.Length)
                     {
-                        int _received = socket.Receive(rsaParameters.Exponent, received, rsaParameters.Exponent.Length - received, SocketFlags.None);
-                        if (_received == 0)
+                        RSAParameters rsaParameters = rsa.ExportParameters(false);
+
+                        int received = 0;
+                        while (received < rsaParameters.Exponent.Length)
+                        {
+                            int _received = socket.Receive(rsaParameters.Exponent, received, rsaParameters.Exponent.Length - received, SocketFlags.None);
+                            if (_received == 0)
+                            {
+                                throw new Exception("Connection closed");
+                            }
+                            received += _received;
+                        }
+
+                        received = 0;
+                        while (received < rsaParameters.Modulus.Length)
+                        {
+                            int _received = socket.Receive(rsaParameters.Modulus, received, rsaParameters.Modulus.Length - received, SocketFlags.None);
+                            if (_received == 0)
+                            {
+                                throw new Exception("Connection closed");
+                            }
+                            received += _received;
+                        }
+
+                        rsa.ImportParameters(rsaParameters);
+                    }
+
+                    {
+                        byte[] data = rsa.EncryptValue(aes.IV);
+
+                        if (socket.Send(data, data.Length, SocketFlags.None) != data.Length)
                         {
                             throw new Exception("Connection closed");
                         }
-                        received += _received;
-                    }
 
-                    received = 0;
-                    while (received < rsaParameters.Modulus.Length)
-                    {
-                        int _received = socket.Receive(rsaParameters.Modulus, received, rsaParameters.Modulus.Length - received, SocketFlags.None);
-                        if (_received == 0)
+                        data = rsa.EncryptValue(aes.Key);
+
+                        if (socket.Send(data, data.Length, SocketFlags.None) != data.Length)
                         {
                             throw new Exception("Connection closed");
                         }
-                        received += _received;
                     }
 
-                    rsa.ImportParameters(rsaParameters);
-
-                    byte[] data = rsa.EncryptValue(aes.IV);
-
-                    if (socket.Send(data, data.Length, SocketFlags.None) != data.Length)
                     {
-                        throw new Exception("Connection closed");
+                        byte[] bytes = BitConverter.GetBytes(int.MaxValue);
+
+                        int received = 0;
+                        while (received < bytes.Length)
+                        {
+                            int _received = socket.Receive(bytes, received, bytes.Length - received, SocketFlags.None);
+                            if (_received == 0)
+                            {
+                                throw new Exception("Connection closed");
+                            }
+                            received += _received;
+                        }
+
+                        int length = BitConverter.ToInt32(bytes, 0);
+
+                        byte[] ciphertext = new byte[length];
+
+                        received = 0;
+                        while (received < ciphertext.Length)
+                        {
+                            int _received = socket.Receive(ciphertext, received, ciphertext.Length - received, SocketFlags.None);
+                            if (_received == 0)
+                            {
+                                throw new Exception("Connection closed");
+                            }
+                            received += _received;
+                        }
+
+                        string plaintext = Decrypt(ciphertext, ciphertext.Length, aes.IV, aes.Key);
+
+                        Console.WriteLine("[{0}]:{1}: {2}", socketEndPoint.Address, socketEndPoint.Port, plaintext);
                     }
 
-                    data = rsa.EncryptValue(aes.Key);
-
-                    if (socket.Send(data, data.Length, SocketFlags.None) != data.Length)
                     {
-                        throw new Exception("Connection closed");
-                    }
+                        string plaintext = localport.ToString();
 
-                    byte[] bytes = BitConverter.GetBytes(int.MaxValue);
+                        byte[] ciphertext = Encrypt(plaintext, aes.IV, aes.Key);
 
-                    received = 0;
-                    while (received < bytes.Length)
-                    {
-                        int _received = socket.Receive(bytes, received, bytes.Length - received, SocketFlags.None);
-                        if (_received == 0)
+                        byte[] bytes = BitConverter.GetBytes(ciphertext.Length);
+
+                        if (socket.Send(bytes, bytes.Length, SocketFlags.None) != bytes.Length)
                         {
                             throw new Exception("Connection closed");
                         }
-                        received += _received;
-                    }
 
-                    int length = BitConverter.ToInt32(bytes, 0);
-
-                    byte[] ciphertext = new byte[length];
-
-                    received = 0;
-                    while (received < ciphertext.Length)
-                    {
-                        int _received = socket.Receive(ciphertext, received, ciphertext.Length - received, SocketFlags.None);
-                        if (_received == 0)
+                        if (socket.Send(ciphertext, ciphertext.Length, SocketFlags.None) != ciphertext.Length)
                         {
                             throw new Exception("Connection closed");
                         }
-                        received += _received;
-                    }
-
-                    string plaintext = Decrypt(ciphertext, ciphertext.Length, aes.IV, aes.Key);
-
-                    Console.WriteLine("[{0}]:{1}: {2}", socketEndPoint.Address, socketEndPoint.Port, plaintext);
-
-                    plaintext = localport.ToString();
-
-                    ciphertext = Encrypt(plaintext, aes.IV, aes.Key);
-
-                    bytes = BitConverter.GetBytes(ciphertext.Length);
-
-                    if (socket.Send(bytes, bytes.Length, SocketFlags.None) != bytes.Length)
-                    {
-                        throw new Exception("Connection closed");
-                    }
-
-                    if (socket.Send(ciphertext, ciphertext.Length, SocketFlags.None) != ciphertext.Length)
-                    {
-                        throw new Exception("Connection closed");
                     }
                 }
 
