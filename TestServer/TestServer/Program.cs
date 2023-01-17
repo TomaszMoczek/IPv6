@@ -21,18 +21,27 @@ namespace TestServer
             private readonly IPEndPoint endPoint;
             private readonly byte[] iv;
             private readonly byte[] key;
-
             private string plaintext;
 
-            public Client(IPAddress address, int port, byte[] iv, byte[] key)
+            public Client(IPAddress address, int port, byte[] iv, byte[] key, string plaintext)
             {
                 this.endPoint = new IPEndPoint(address, port);
                 this.iv = new byte[iv.Length];
                 Buffer.BlockCopy(iv, 0, this.iv, 0, iv.Length);
                 this.key = new byte[key.Length];
                 Buffer.BlockCopy(key, 0, this.key, 0, key.Length);
+                this.plaintext = plaintext;
+            }
 
-                this.plaintext = "CONNECTED";
+            public Client(Client client)
+            {
+                this.endPoint = new IPEndPoint(client.EndPoint.Address, client.EndPoint.Port);
+                this.iv = new byte[client.IV.Length];
+                Buffer.BlockCopy(client.IV, 0, this.iv, 0, client.IV.Length);
+                this.key = new byte[client.Key.Length];
+                Buffer.BlockCopy(client.Key, 0, this.key, 0, client.Key.Length);
+                this.plaintext = client.Plaintext;
+
             }
 
             public IPEndPoint EndPoint
@@ -317,7 +326,7 @@ namespace TestServer
         private int OnConnected(Socket socket, Guid guid, IPAddress address, int port, byte[] iv, byte[] key)
         {
             int count = 0;
-            Client client = new Client(address, port, iv, key);
+            Client client = new Client(address, port, iv, key, "CONNECTED");
 
             lock(obj)
             {
