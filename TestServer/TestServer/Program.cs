@@ -12,36 +12,35 @@ namespace TestServer
     class Program
     {
         private readonly RSA rsa;
+
         private RSAParameters rsaParameters;
 
         private readonly int port;
 
         private class Client
         {
+            private readonly object obj;
+            private readonly Socket socket;
             private readonly IPEndPoint endPoint;
             private readonly byte[] iv;
             private readonly byte[] key;
             private string plaintext;
 
-            public Client(IPAddress address, int port, byte[] iv, byte[] key, string plaintext)
+            public Client(IPAddress address, int port, byte[] iv, byte[] key)
             {
+                this.obj = new object();
+                this.socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp); 
                 this.endPoint = new IPEndPoint(address, port);
                 this.iv = new byte[iv.Length];
                 Buffer.BlockCopy(iv, 0, this.iv, 0, iv.Length);
                 this.key = new byte[key.Length];
                 Buffer.BlockCopy(key, 0, this.key, 0, key.Length);
-                this.plaintext = plaintext;
+                this.plaintext = "CONNECTED";
             }
 
-            public Client(Client client)
+            public Socket Socket
             {
-                this.endPoint = new IPEndPoint(client.EndPoint.Address, client.EndPoint.Port);
-                this.iv = new byte[client.IV.Length];
-                Buffer.BlockCopy(client.IV, 0, this.iv, 0, client.IV.Length);
-                this.key = new byte[client.Key.Length];
-                Buffer.BlockCopy(client.Key, 0, this.key, 0, client.Key.Length);
-                this.plaintext = client.Plaintext;
-
+                get { return socket; }
             }
 
             public IPEndPoint EndPoint
@@ -61,8 +60,8 @@ namespace TestServer
 
             public string Plaintext
             {
-                get { return plaintext; }
-                set { plaintext = value; }
+                get { lock (obj) { return plaintext; } }
+                set { lock(obj) { plaintext = value; } }
             }
         }
 
@@ -127,7 +126,6 @@ namespace TestServer
         public void HandleClient(object obj)
         {
             Socket client = null;
-            Socket socket = null;
             Guid guid = Guid.NewGuid();
 
             try
@@ -249,57 +247,202 @@ namespace TestServer
                     }
                 }
 
-                socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
-                IPEndPoint socketEndPoint = new IPEndPoint(clientEndPoint.Address, remoteport);
-
-                int count = OnConnected(socket, guid, clientEndPoint.Address, remoteport, IV, Key);
+                int count = OnConnected(guid, clientEndPoint.Address, remoteport, IV, Key);
 
                 Console.WriteLine("Connection count: {0}", count);
 
                 while (true)
                 {
-                    string plaintext;
+                    byte[] bytes = BitConverter.GetBytes(int.MaxValue);
 
+                    int received = 0;
+                    while (received < bytes.Length)
                     {
-                        byte[] bytes = BitConverter.GetBytes(int.MaxValue);
-
-                        int received = 0;
-                        while (received < bytes.Length)
+                        int _received = client.Receive(bytes, received, bytes.Length - received, SocketFlags.None);
+                        if (_received == 0)
                         {
-                            int _received = client.Receive(bytes, received, bytes.Length - received, SocketFlags.None);
-                            if (_received == 0)
-                            {
-                                throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
-                            }
-                            received += _received;
+                            throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                         }
+                        received += _received;
+                    }
 
-                        int length = BitConverter.ToInt32(bytes, 0);
+                    int length = BitConverter.ToInt32(bytes, 0);
 
-                        byte[] ciphertext = new byte[length];
+                    byte[] ciphertext = new byte[length];
 
-                        received = 0;
-                        while (received < ciphertext.Length)
+                    received = 0;
+                    while (received < ciphertext.Length)
+                    {
+                        int _received = client.Receive(ciphertext, received, ciphertext.Length - received, SocketFlags.None);
+                        if (_received == 0)
                         {
-                            int _received = client.Receive(ciphertext, received, ciphertext.Length - received, SocketFlags.None);
-                            if (_received == 0)
-                            {
-                                throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
-                            }
-                            received += _received;
+                            throw new Exception(string.Format("Connection closed: [{0}]:{1}", clientEndPoint.Address, clientEndPoint.Port));
                         }
+                        received += _received;
+                    }
 
-                        plaintext = Decrypt(ciphertext, IV, Key);
+                    string plaintext = Decrypt(ciphertext, IV, Key);
+
+                    OnDataReceived(guid, plaintext);
+                }
+            }
+            catch (SocketException exception)
+            {
+                Console.WriteLine("{0} [Error code: {1}]", exception.Message, exception.ErrorCode);
+
+                int count = OnDisconnected(guid);
+
+                if (count != -1)
+                {
+                    Console.WriteLine("Connection count: {0}", count);
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(exception.Message);
+
+                int count = OnDisconnected(guid);
+
+                if (count != -1)
+                {
+                    Console.WriteLine("Connection count: {0}", count);
+                }
+            }
+            finally
+            {
+                if (client != null)
+                {
+                    client.Close();
+                }
+            }
+        }
+
+        private int OnConnected(Guid guid, IPAddress address, int port, byte[] iv, byte[] key)
+        {
+            Guid[] guids;
+            int count = 0;
+            Client client = new Client(address, port, iv, key);
+
+            lock (obj)
+            {
+                guids = new Guid[clients.Keys.Count];
+                clients.Keys.CopyTo(guids, 0);
+                clients.Add(guid, client);
+                count = clients.Count;
+            }
+
+            foreach (Guid _guid in guids)
+            {
+                Client _client = null;
+
+                lock (obj)
+                {
+                    clients.TryGetValue(_guid, out _client);
+                }
+
+                if (_client != null)
+                {
+                    {
+                        string plaintext = _guid.ToString() + "|" + _client.Plaintext;
+                        byte[] ciphertext = Encrypt(plaintext, client.IV, client.Key);
+
+                        if (client.Socket.SendTo(ciphertext, ciphertext.Length, SocketFlags.None, client.EndPoint) != ciphertext.Length)
+                        {
+                            Console.WriteLine("Failed to send datagram: [{0}]:{1}", client.EndPoint.Address, client.EndPoint.Port);
+                        }
                     }
 
                     {
-                        byte[] ciphertext = Encrypt(plaintext, IV, Key);
+                        string plaintext = guid.ToString() + "|" + client.Plaintext;
+                        byte[] ciphertext = Encrypt(plaintext, _client.IV, _client.Key);
 
-                        if (socket.SendTo(ciphertext, ciphertext.Length, SocketFlags.None, socketEndPoint) != ciphertext.Length)
+                        if (_client.Socket.SendTo(ciphertext, ciphertext.Length, SocketFlags.None, _client.EndPoint) != ciphertext.Length)
                         {
-                            Console.WriteLine("Failed to send datagram: [{0}]:{1}", socketEndPoint.Address, socketEndPoint.Port);
+                            Console.WriteLine("Failed to send datagram: [{0}]:{1}", _client.EndPoint.Address, _client.EndPoint.Port);
                         }
                     }
+                }
+            }
+
+            return count;
+        }
+
+        private void OnDataReceived(Guid guid, string plaintext)
+        {
+            Guid[] guids;
+
+            lock (obj)
+            {
+                guids = new Guid[clients.Keys.Count];
+                clients.Keys.CopyTo(guids, 0);
+                clients[guid].Plaintext = plaintext;
+            }
+
+            foreach (Guid _guid in guids)
+            {
+                if (!_guid.Equals(guid))
+                {
+                    Client _client = null;
+
+                    lock (obj)
+                    {
+                        clients.TryGetValue(_guid, out _client);
+                    }
+
+                    if (_client != null)
+                    {
+                        string _plaintext = guid.ToString() + "|" + plaintext;
+                        byte[] ciphertext = Encrypt(_plaintext, _client.IV, _client.Key);
+
+                        if (_client.Socket.SendTo(ciphertext, ciphertext.Length, SocketFlags.None, _client.EndPoint) != ciphertext.Length)
+                        {
+                            Console.WriteLine("Failed to send datagram: [{0}]:{1}", _client.EndPoint.Address, _client.EndPoint.Port);
+                        }
+                    }
+                }
+            }
+        }
+
+        private int OnDisconnected(Guid guid)
+        {
+            int count = -1;
+            Guid[] guids = null;
+
+            try
+            {
+                lock (obj)
+                {
+                    if (clients.Remove(guid))
+                    {
+                        guids = new Guid[clients.Keys.Count];
+                        clients.Keys.CopyTo(guids, 0);
+                        count = clients.Count;
+                    }
+                }
+
+                if (guids != null)
+                {
+                    foreach (Guid _guid in guids)
+                    {
+                        Client _client = null;
+
+                        lock (obj)
+                        {
+                            clients.TryGetValue(_guid, out _client);
+                        }
+
+                        if (_client != null)
+                        {
+                            string plaintext = guid.ToString() + "|DISCONNECTED";
+                            byte[] ciphertext = Encrypt(plaintext, _client.IV, _client.Key);
+
+                            if (_client.Socket.SendTo(ciphertext, ciphertext.Length, SocketFlags.None, _client.EndPoint) != ciphertext.Length)
+                            {
+                                Console.WriteLine("Failed to send datagram: [{0}]:{1}", _client.EndPoint.Address, _client.EndPoint.Port);
+                            }
+                        }
+                    }
+
                 }
             }
             catch (SocketException exception)
@@ -309,91 +452,6 @@ namespace TestServer
             catch (Exception exception)
             {
                 Console.WriteLine(exception.Message);
-            }
-            finally
-            {
-                if (socket != null)
-                {
-                    socket.Close();
-                }
-                if (client != null)
-                {
-                    client.Close();
-                }
-            }
-        }
-
-        private int OnConnected(Socket socket, Guid guid, IPAddress address, int port, byte[] iv, byte[] key)
-        {
-            int count = 0;
-            Client client = new Client(address, port, iv, key, "CONNECTED");
-
-            lock(obj)
-            {
-                foreach (Guid Key in clients.Keys)
-                {
-                    {
-                        string plaintext = Key.ToString() + "|" + clients[Key].Plaintext;
-                        byte[] ciphertext = Encrypt(plaintext, client.IV, client.Key);
-
-                        if (socket.SendTo(ciphertext, ciphertext.Length, SocketFlags.None, client.EndPoint) != ciphertext.Length)
-                        {
-                            Console.WriteLine("Failed to send datagram: [{0}]:{1}", client.EndPoint.Address, client.EndPoint.Port);
-                        }
-                    }
-
-                    {
-                        string plaintext = guid.ToString() + "|" + client.Plaintext;
-                        byte[] ciphertext = Encrypt(plaintext, clients[Key].IV, clients[Key].Key);
-
-                        if (socket.SendTo(ciphertext, ciphertext.Length, SocketFlags.None, clients[Key].EndPoint) != ciphertext.Length)
-                        {
-                            Console.WriteLine("Failed to send datagram: [{0}]:{1}"
-                                , clients[Key].EndPoint.Address, clients[Key].EndPoint.Port);
-                        }
-                    }
-                }
-
-                clients.Add(guid, client);
-
-                count = clients.Count;
-            }
-
-            return count;
-        }
-
-        private void OnDataReceived(Socket socket, Guid guid, string plaintext)
-        {
-            lock(obj)
-            {
-                foreach (Guid Key in clients.Keys)
-                {
-                    if (Key.Equals(guid))
-                    {
-                        clients[guid].Plaintext = plaintext;
-                    }
-                    else
-                    {
-
-                    }
-                }
-            }
-        }
-
-        private int OnDisconnected(Socket socket, Guid guid)
-        {
-            int count = 0;
-
-            lock(obj)
-            {
-                if (clients.Remove(guid))
-                {
-                    foreach (Guid Key in clients.Keys)
-                    {
-
-                    }
-                }
-                count = clients.Count;
             }
 
             return count;
