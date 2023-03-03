@@ -175,7 +175,7 @@ namespace TestServer
                             received += _received;
                         }
 
-                        byte[] iv = rsa.DecryptValue(data);
+                        byte[] iv = rsa.Decrypt(data, RSAEncryptionPadding.Pkcs1);
 
                         received = 0;
                         while (received < data.Length)
@@ -188,7 +188,7 @@ namespace TestServer
                             received += _received;
                         }
 
-                        byte[] key = rsa.DecryptValue(data);
+                        byte[] key = rsa.Decrypt(data, RSAEncryptionPadding.Pkcs1);
 
                         Buffer.BlockCopy(iv, iv.Length - IV.Length, IV, 0, IV.Length);
                         Buffer.BlockCopy(key, key.Length - Key.Length, Key, 0, Key.Length);

@@ -74,14 +74,14 @@ namespace TestClient
                     }
 
                     {
-                        byte[] data = rsa.EncryptValue(aes.IV);
+                        byte[] data = rsa.Encrypt(aes.IV, RSAEncryptionPadding.Pkcs1);
 
                         if (socket.Send(data, data.Length, SocketFlags.None) != data.Length)
                         {
                             throw new Exception("Connection closed");
                         }
 
-                        data = rsa.EncryptValue(aes.Key);
+                        data = rsa.Encrypt(aes.Key, RSAEncryptionPadding.Pkcs1);
 
                         if (socket.Send(data, data.Length, SocketFlags.None) != data.Length)
                         {
