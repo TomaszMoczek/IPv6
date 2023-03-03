@@ -13,8 +13,8 @@ namespace Test
         {
             process = new Process();
 
-            process.StartInfo.FileName = "mono";
-            process.StartInfo.Arguments = "--runtime=v4.0 " + file + " " + host + " " + port.ToString();
+            process.StartInfo.FileName = file;
+            process.StartInfo.Arguments = host + " " + port.ToString();
             process.StartInfo.UseShellExecute = false;
             process.StartInfo.RedirectStandardInput = true;
             process.StartInfo.RedirectStandardOutput = true;
