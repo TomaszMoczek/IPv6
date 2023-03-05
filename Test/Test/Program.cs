@@ -13,8 +13,17 @@ namespace Test
         {
             process = new Process();
 
-            process.StartInfo.FileName = file;
-            process.StartInfo.Arguments = host + " " + port.ToString();
+            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+            {
+                process.StartInfo.FileName = file;
+                process.StartInfo.Arguments = host + " " + port.ToString();
+            }
+            else
+            {
+                process.StartInfo.FileName = "mono";
+                process.StartInfo.Arguments = file + " " + host + " " + port.ToString();
+            }
+
             process.StartInfo.UseShellExecute = false;
             process.StartInfo.RedirectStandardInput = true;
             process.StartInfo.RedirectStandardOutput = true;
@@ -111,7 +120,7 @@ namespace Test
                 }
                 else
                 {
-                    throw new Exception("Usage: Test file host port");
+                    throw new Exception("Usage: " + System.Reflection.Assembly.GetEntryAssembly().GetName().Name + " file host port");
                 }
             }
             catch (Exception exception)

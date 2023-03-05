@@ -535,7 +535,7 @@ namespace TestServer
                 }
                 else
                 {
-                    throw new Exception("Usage: TestServer.exe port");
+                    throw new Exception("Usage: " + System.Reflection.Assembly.GetEntryAssembly().GetName().Name + " port");
                 }
             }
             catch (Exception exception)

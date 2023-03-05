@@ -321,7 +321,7 @@ namespace TestClient
                 }
                 else
                 {
-                    throw new Exception("Usage: TestClient.exe host port");
+                    throw new Exception("Usage: " + System.Reflection.Assembly.GetEntryAssembly().GetName().Name + " host port");
                 }
             }
             catch (Exception exception)
