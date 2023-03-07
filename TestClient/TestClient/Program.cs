@@ -35,8 +35,18 @@ namespace TestClient
 
             try
             {
+                IPAddress address;
+
+                if (!IPAddress.TryParse(host, out address))
+                {
+                    address = Dns.GetHostEntry(host).AddressList[0];
+                }
+
+                IPEndPoint socketEndPoint = new IPEndPoint(address, port);
+
                 socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
-                IPEndPoint socketEndPoint = new IPEndPoint(IPAddress.Parse(host), port);
+
+                socket.DualMode = true;
 
                 socket.Connect(socketEndPoint);
 
@@ -196,8 +206,11 @@ namespace TestClient
             {
                 Thread.CurrentThread.IsBackground = true;
 
-                socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
                 IPEndPoint socketEndPoint = new IPEndPoint(IPAddress.IPv6Any, localport);
+
+                socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
+
+                socket.DualMode = true;
 
                 socket.Bind(socketEndPoint);
 

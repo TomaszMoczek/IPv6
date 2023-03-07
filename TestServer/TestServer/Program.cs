@@ -29,7 +29,8 @@ namespace TestServer
             public Client(IPAddress address, int port, byte[] iv, byte[] key)
             {
                 this.obj = new object();
-                this.socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp); 
+                this.socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
+                this.socket.DualMode = true;
                 this.endPoint = new IPEndPoint(address, port);
                 this.iv = new byte[iv.Length];
                 Buffer.BlockCopy(iv, 0, this.iv, 0, iv.Length);
@@ -90,8 +91,11 @@ namespace TestServer
 
             try
             {
-                server = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
                 IPEndPoint serverEndPoint = new IPEndPoint(IPAddress.IPv6Any, port);
+
+                server = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
+
+                server.DualMode = true;
 
                 server.Bind(serverEndPoint);
                 server.Listen(int.MaxValue);
